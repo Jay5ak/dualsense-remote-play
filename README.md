@@ -1,6 +1,9 @@
 <div align="center">
 
 # DualSense Remote Play
+<p align="center">
+  <img src="icono.png" alt="DualSense Remote Play logo" width="180">
+</p>
 
 A lightweight macOS menu bar app that automatically manages PlayStation Remote Play when you connect or disconnect your DualSense controller.
 
