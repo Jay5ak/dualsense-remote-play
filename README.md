@@ -39,27 +39,22 @@ Connect your controller to launch PS Remote Play automatically. Disconnect it to
 3. Open the DMG file and drag `DualSense Remote Play.app` into Applications.
 4. Pair your DualSense controller in **System Settings → Bluetooth**.
 5. Launch DualSense Remote Play.
+> **Security note:** DualSense Remote Play may not be notarized by Apple. macOS may display a security warning. Only run software you trust.
 
-> **Security note:** The app may not be notarized by Apple. macOS may display a security warning. Only run software you trust.
-> ## macOS Security Warning
+## macOS Security Warning
 
-DualSense Remote Play is an open-source project and may not be notarized by Apple.
-macOS may display a security warning when you first open the app.
-
-If macOS blocks the app and you have verified that it came from the official
-GitHub repository:
+If macOS blocks the app and you have verified that it came from the official GitHub repository:
 
 1. Try opening the app once.
-2. Open System Settings.
-3. Select Privacy & Security.
-4. Scroll down to the Security section.
-5. If the option is available, click Open Anyway.
+2. Open **System Settings**.
+3. Select **Privacy & Security**.
+4. Scroll down to the **Security** section.
+5. If available, click **Open Anyway**.
 6. Confirm that you want to open the app.
 
 Only bypass this warning if you trust the application and its source.
 
-Official repository:
-https://github.com/Jay5ak/dualsense-remote-play
+Official repository: https://github.com/Jay5ak/dualsense-remote-play
 
 ## How to Use
 
