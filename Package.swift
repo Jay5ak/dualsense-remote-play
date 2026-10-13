@@ -12,7 +12,9 @@ let package = Package(
             name: "DualSenseRemotePlay",
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedFramework("GameController"),
                 .linkedFramework("IOBluetooth"),
+                .linkedFramework("IOKit"),
                 .linkedFramework("ServiceManagement")
             ]
         )
