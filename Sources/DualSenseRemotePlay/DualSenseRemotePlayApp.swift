@@ -8,6 +8,12 @@ struct DualSenseRemotePlayApp: App {
 
     var body: some Scene {
         MenuBarExtra {
+            Button(AppModel.shared.isPaused ? "Resume Link" : "Pause Link") {
+                AppModel.shared.togglePause()
+            }
+
+            Divider()
+
             Button("Cerrar app") {
                 NSApp.terminate(nil)
             }
@@ -22,8 +28,16 @@ private struct StatusIcon: View {
     @ObservedObject private var model = AppModel.shared
 
     var body: some View {
-        Image(systemName: model.isConnected ? "gamecontroller.fill" : "gamecontroller")
-            .foregroundStyle(model.isConnected ? Color.white : Color.gray)
+        Image(
+            systemName: model.isConnected
+                ? "gamecontroller.fill"
+                : "gamecontroller"
+        )
+        .foregroundStyle(
+            model.isPaused
+                ? Color.red
+                : (model.isConnected ? Color.white : Color.gray)
+        )
     }
 }
 
@@ -33,11 +47,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
+        AppModel.shared.onPauseChanged = { [weak self] isPaused in
+            self?.monitor.setPaused(isPaused)
+        }
+
         monitor.onStateChange = { state in
             DispatchQueue.main.async {
                 switch state {
                 case .searching:
                     AppModel.shared.isConnected = false
+
                 case .connected, .remotePlayMissing:
                     AppModel.shared.isConnected = true
                 }
@@ -55,7 +74,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
+
     @Published var isConnected = false
+    @Published var isPaused = false
+
+    var onPauseChanged: ((Bool) -> Void)?
+
+    func togglePause() {
+        isPaused.toggle()
+        onPauseChanged?(isPaused)
+    }
 }
 
 enum MonitorState {
@@ -69,6 +97,7 @@ final class DualSenseMonitor {
 
     private var timer: Timer?
     private var wasConnected = false
+    private var isPaused = false
 
     private let remotePlayIDs = [
         "com.playstation.RemotePlay",
@@ -80,8 +109,11 @@ final class DualSenseMonitor {
     func start() {
         timer?.invalidate()
         checkConnection()
-        timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) {
-            [weak self] _ in
+
+        timer = Timer.scheduledTimer(
+            withTimeInterval: 2,
+            repeats: true
+        ) { [weak self] _ in
             self?.checkConnection()
         }
     }
@@ -91,8 +123,19 @@ final class DualSenseMonitor {
         timer = nil
     }
 
+    func setPaused(_ paused: Bool) {
+        isPaused = paused
+
+        if !paused {
+            // Re-evaluate the controller when automation resumes.
+            wasConnected = false
+            checkConnection()
+        }
+    }
+
     private func checkConnection() {
-        let devices = IOBluetoothDevice.pairedDevices() as? [IOBluetoothDevice] ?? []
+        let devices = IOBluetoothDevice.pairedDevices()
+            as? [IOBluetoothDevice] ?? []
 
         let connected = devices.contains {
             $0.isConnected() &&
@@ -101,11 +144,23 @@ final class DualSenseMonitor {
             )
         }
 
+        // While paused, track the controller but do not
+        // launch or terminate PS Remote Play.
+        if isPaused {
+            wasConnected = connected
+
+            onStateChange?(
+                connected ? .connected : .searching
+            )
+            return
+        }
+
         guard connected else {
             if wasConnected {
                 wasConnected = false
                 closeRemotePlay()
             }
+
             onStateChange?(.searching)
             return
         }
@@ -126,8 +181,10 @@ final class DualSenseMonitor {
             return
         }
 
-        workspace.openApplication(at: url, configuration: .init()) {
-            [weak self] _, error in
+        workspace.openApplication(
+            at: url,
+            configuration: .init()
+        ) { [weak self] _, error in
             DispatchQueue.main.async {
                 guard let self else { return }
 
@@ -144,8 +201,12 @@ final class DualSenseMonitor {
     private func closeRemotePlay() {
         for bundleID in remotePlayIDs {
             NSRunningApplication
-                .runningApplications(withBundleIdentifier: bundleID)
-                .forEach { $0.terminate() }
+                .runningApplications(
+                    withBundleIdentifier: bundleID
+                )
+                .forEach {
+                    $0.terminate()
+                }
         }
     }
 }
