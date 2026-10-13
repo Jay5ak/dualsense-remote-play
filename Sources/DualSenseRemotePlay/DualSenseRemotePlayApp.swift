@@ -6,10 +6,12 @@ import SwiftUI
 struct DualSenseRemotePlayApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    @StateObject private var model = AppModel.shared
+
     var body: some Scene {
         MenuBarExtra {
-            Button(AppModel.shared.isPaused ? "Resume Link" : "Pause Link") {
-                AppModel.shared.togglePause()
+            Button(model.isPaused ? "Resume Link" : "Pause Link") {
+                model.togglePause()
             }
 
             Divider()
@@ -18,14 +20,14 @@ struct DualSenseRemotePlayApp: App {
                 NSApp.terminate(nil)
             }
         } label: {
-            StatusIcon()
+            StatusIcon(model: model)
         }
         .menuBarExtraStyle(.menu)
     }
 }
 
 private struct StatusIcon: View {
-    @ObservedObject private var model = AppModel.shared
+    @ObservedObject var model: AppModel
 
     var body: some View {
         Image(
@@ -56,7 +58,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 switch state {
                 case .searching:
                     AppModel.shared.isConnected = false
-
                 case .connected, .remotePlayMissing:
                     AppModel.shared.isConnected = true
                 }
@@ -127,7 +128,6 @@ final class DualSenseMonitor {
         isPaused = paused
 
         if !paused {
-            // Re-evaluate the controller when automation resumes.
             wasConnected = false
             checkConnection()
         }
@@ -144,14 +144,9 @@ final class DualSenseMonitor {
             )
         }
 
-        // While paused, track the controller but do not
-        // launch or terminate PS Remote Play.
         if isPaused {
             wasConnected = connected
-
-            onStateChange?(
-                connected ? .connected : .searching
-            )
+            onStateChange?(connected ? .connected : .searching)
             return
         }
 
@@ -201,12 +196,8 @@ final class DualSenseMonitor {
     private func closeRemotePlay() {
         for bundleID in remotePlayIDs {
             NSRunningApplication
-                .runningApplications(
-                    withBundleIdentifier: bundleID
-                )
-                .forEach {
-                    $0.terminate()
-                }
+                .runningApplications(withBundleIdentifier: bundleID)
+                .forEach { $0.terminate() }
         }
     }
 }
