@@ -2,6 +2,13 @@
 
 All notable changes to **DualSense Remote Play** will be documented in this file.
 
+## [1.2.0] - 2026-10-15
+
+### Added
+- Gemini implementation adopted as the main application architecture.
+- Explicit documentation for MacBook models with a notch and native menu bar behavior.
+- Updated public version metadata and DMG build output.
+
 ## [1.0.0] - Initial Public Release
 
 ### Added

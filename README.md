@@ -23,6 +23,7 @@ DualSense Remote Play automatically detects when your Sony **DualSense Wireless 
   - Real-time reactive SwiftUI menu item toggle (`Link: Active — Pause link` ↔ `Link: Paused — Resume link`).
 - **Duplicate Remote Play Prevention**: Verifies running instances before launching, preventing multiple instances or crashes if Remote Play is not installed.
 - **macOS Tahoe Aesthetic**: Minimalist frosted glass controller icon with battery neon accents.
+- **Notch-Friendly Menu Bar Layout**: Uses a compact native `MenuBarExtra` presentation so the controller icon and battery percentage fit naturally in the available menu bar space on MacBook Pro models with a notch. No separate notch overlay or private API is required.
 
 ---
 
@@ -43,6 +44,10 @@ DualSense Remote Play automatically detects when your Sony **DualSense Wireless 
 2. Open the disk image.
 3. Drag **DualSense Remote Play.app** into the **Applications** folder shortcut.
 4. Launch **DualSense Remote Play** from Launchpad or `/Applications`.
+
+### MacBook models with a notch
+
+The app runs as a native menu bar utility and keeps its status icon and battery percentage in the normal macOS menu bar. On MacBook Pro models with a notch, macOS manages the available menu bar space automatically; the app does not draw over the notch or use private notch APIs.
 
 ---
 
