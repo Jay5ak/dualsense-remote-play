@@ -3,19 +3,28 @@ import PackageDescription
 
 let package = Package(
     name: "DualSenseRemotePlay",
-    platforms: [.macOS(.v13)],
-    products: [
-        .executable(name: "DualSenseRemotePlay", targets: ["DualSenseRemotePlay"])
+    platforms: [
+        .macOS(.v13)
     ],
+    products: [
+        .executable(
+            name: "DualSenseRemotePlay",
+            targets: ["DualSenseRemotePlay"]
+        )
+    ],
+    dependencies: [],
     targets: [
         .executableTarget(
             name: "DualSenseRemotePlay",
+            dependencies: [],
+            path: "Sources/DualSenseRemotePlay",
             linkerSettings: [
                 .linkedFramework("AppKit"),
-                .linkedFramework("GameController"),
+                .linkedFramework("SwiftUI"),
                 .linkedFramework("IOBluetooth"),
                 .linkedFramework("IOKit"),
-                .linkedFramework("ServiceManagement")
+                .linkedFramework("GameController"),
+                .linkedFramework("UserNotifications")
             ]
         )
     ]

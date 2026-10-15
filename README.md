@@ -1,78 +1,98 @@
-<p align="center">
-  <img src="assets/logo.png" alt="DualSense Remote Play" width="180">
-</p>
+# DualSense Remote Play
 
-<h1 align="center">DualSense Remote Play</h1>
+A lightweight, native macOS menu bar utility built with **SwiftUI** for **macOS 13 or later**.
 
-<p align="center">
-  A lightweight macOS menu bar utility for managing PS Remote Play with DualSense and DualSense Edge controllers.
-</p>
+DualSense Remote Play automatically detects when your Sony **DualSense Wireless Controller** or **DualSense Edge Wireless Controller** is connected or disconnected (via Bluetooth or USB). When connected, it launches **PS Remote Play** automatically; when disconnected, it gracefully closes it.
 
-<p align="center">
-  <a href="https://github.com/Jay5ak/dualsense-remote-play/releases/latest">Download the latest DMG</a>
-  ·
-  <a href="https://github.com/Jay5ak/dualsense-remote-play/issues">Report a bug</a>
-</p>
+---
 
 ## Features
 
-- Detects DualSense and DualSense Edge controllers over Bluetooth or USB.
-- Opens PS Remote Play when a supported controller connects.
-- Avoids launching a second Remote Play instance when it is already open.
-- Closes Remote Play when the controller disconnects.
-- Shows the controller battery percentage in the menu bar.
-- Sends a notification when the battery reaches 20% or less.
-- Uses a green icon when connected and a white icon when disconnected.
-- Shows a smooth green breathing effect while the controller is charging.
-- Includes `Pause link` / `Resume link` for using the controller with Steam or native Mac games.
-- Shows a red icon while the link is paused.
-- Runs as a lightweight menu bar app without a traditional window.
-- Includes a minimal macOS Tahoe-inspired app icon.
+- **Menu Bar Utility**: Runs cleanly in the menu bar with `MenuBarExtra` and no cluttering main window or Dock icon (`LSUIElement`).
+- **DualSense & DualSense Edge Support**: Auto-detects standard DualSense and DualSense Edge controllers via Apple GameController and IOBluetooth APIs.
+- **Accurate Battery Level**: Reads battery status directly from Apple's `GCController.battery` (`0...100%`) without guessing.
+- **Charging Breathing Effect**: Gentle, fluid green pulsating breathing animation in the menu bar while charging (`batteryState == .charging`), implemented safely on `@MainActor` without freezing the menu bar.
+- **Low Battery Notification (20%)**: Emits a system notification with default sound once the battery level drops to 20% or lower. Automatically resets when recharged or disconnected.
+- **Dynamic Color Indicators**:
+  - 🟢 **Green**: Controller connected and link active.
+  - ⚪ **White / Primary**: Controller disconnected.
+  - 🔴 **Red**: Link paused.
+- **Pause link / Resume link**:
+  - `Pause link`: Suspends monitoring, closes PS Remote Play, frees the controller for Steam or native Mac games, and turns the menu bar icon red.
+  - `Resume link`: Restores monitoring and automatically reconnects to PS Remote Play.
+  - Real-time reactive SwiftUI menu item toggle (`Link: Active — Pause link` ↔ `Link: Paused — Resume link`).
+- **Duplicate Remote Play Prevention**: Verifies running instances before launching, preventing multiple instances or crashes if Remote Play is not installed.
+- **macOS Tahoe Aesthetic**: Minimalist frosted glass controller icon with battery neon accents.
+
+---
 
 ## Requirements
 
-- macOS 13 or later.
-- A DualSense or DualSense Edge controller.
-- [PS Remote Play for Mac](https://remoteplay.dl.playstation.net/remoteplay/lang/en/index.html).
+- **macOS 13.0 (Ventura)** or later.
+- Compatible with Apple Silicon (M1/M2/M3/M4) and Intel Macs.
+- Sony DualSense or DualSense Edge Controller.
+- [PS Remote Play](https://remoteplay.dl.playstation.net/remoteplay/lang/en/) for macOS installed.
+
+---
 
 ## Installation
 
-1. Open the [latest release](https://github.com/Jay5ak/dualsense-remote-play/releases/latest).
-2. Download `DualSense-Remote-Play.dmg`.
-3. Open the DMG and drag `DualSense Remote Play.app` to Applications.
-4. Pair or connect your controller in **System Settings → Bluetooth**.
-5. Launch the app.
+### Using the DMG
 
-### macOS security warning
+1. Download or build `build/DualSense-Remote-Play.dmg`.
+2. Open the disk image.
+3. Drag **DualSense Remote Play.app** into the **Applications** folder shortcut.
+4. Launch **DualSense Remote Play** from Launchpad or `/Applications`.
 
-The app is currently distributed without Apple notarization. If macOS blocks it:
+---
 
-1. Try to open the app once.
-2. Open **System Settings → Privacy & Security**.
-3. Scroll to the security section.
-4. Click **Open Anyway** for DualSense Remote Play.
-5. Confirm the prompt and launch the app again.
+## Building from Source
 
-This warning should disappear once releases are signed and notarized by Apple.
+### Prerequisites
+- macOS with Xcode Command Line Tools installed (`xcode-select --install`).
 
-## Menu bar states
+### Build Steps
 
-- **Green icon:** controller connected and link active.
-- **White icon:** controller disconnected.
-- **Red icon:** link paused; Remote Play supervision is stopped.
-- **Green breathing icon:** controller is charging.
-- **Pause link:** closes Remote Play and releases the controller for Steam or another Mac game.
-- **Resume link:** restores controller monitoring and Remote Play behavior.
+1. Clone the repository and navigate to the project directory:
+   ```bash
+   cd DualSenseRemotePlay
+   ```
 
-## Build from source
+2. Compile using Swift Package Manager:
+   ```bash
+   swift build
+   ```
 
-Requirements: Xcode Command Line Tools or a compatible Swift toolchain.
+3. Build the release `.app` bundle:
+   ```bash
+   ./Scripts/build-app.sh
+   ```
+   The compiled bundle will be generated at `build/DualSense Remote Play.app`.
 
-```sh
-git clone https://github.com/Jay5ak/dualsense-remote-play.git
-cd dualsense-remote-play
-./Scripts/build-app.sh
-./Scripts/create-dmg.sh
-```
+4. Build the disk image (`.dmg`):
+   ```bash
+   ./Scripts/create-dmg.sh
+   ```
+   The output disk image will be created at `build/DualSense-Remote-Play.dmg`.
 
-The source is open and includes the Swift code, build scripts, app icon resources, license, and changelog.
+---
+
+## macOS Security & Gatekeeper ("App can't be opened")
+
+Because this build is signed locally with an ad-hoc signature and not notarized through an Apple Developer account, macOS Gatekeeper may show a warning on first launch stating that the developer cannot be verified.
+
+Follow these precise steps to allow the app to run:
+
+1. **Attempt to open the app once**: Double-click `DualSense Remote Play.app`. macOS will display an alert saying the app is from an unidentified developer. Click **Cancel** or **Done**.
+2. **Open System Settings**: Click the Apple menu () in the top-left corner and select **System Settings** (or **System Preferences**).
+3. **Navigate to Privacy & Security**: Select **Privacy & Security** from the sidebar and scroll down to the **Security** section.
+4. **Click "Open Anyway"**: You will see a message: *"DualSense Remote Play was blocked from use because it is not from an identified developer."* Click the **Open Anyway** button next to it.
+5. **Confirm and open**: When prompted, enter your administrator password or use Touch ID, then click **Open**.
+
+DualSense Remote Play will now start and appear in your menu bar. You will not need to repeat this procedure for future launches.
+
+---
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
