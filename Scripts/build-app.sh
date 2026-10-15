@@ -17,7 +17,7 @@ if [ ! -f "${BIN_PATH}" ]; then
     exit 1
 fi
 
-APP_BUNDLE_NAME="Gemini DualSense Remote Play.app"
+APP_BUNDLE_NAME="DualSense Remote Play.app"
 BUILD_DIR="${PROJECT_DIR}/build"
 APP_DIR="${BUILD_DIR}/${APP_BUNDLE_NAME}"
 CONTENTS_DIR="${APP_DIR}/Contents"
@@ -44,7 +44,9 @@ fi
 echo "==> Validating Info.plist..."
 plutil -lint "${CONTENTS_DIR}/Info.plist"
 
-echo "==> Applying ad-hoc code signature..."
+echo "==> Cleaning extended attributes and applying ad-hoc code signature..."
+dot_clean "${APP_DIR}"
+xattr -cr "${APP_DIR}"
 if command -v codesign &> /dev/null; then
     codesign --force --deep --sign - "${APP_DIR}"
     echo "Ad-hoc code signing completed successfully."

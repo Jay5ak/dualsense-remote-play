@@ -44,32 +44,329 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - Menu Bar Icon View
+// MARK: - Subtle Notch Border Overlay Manager
+
+@MainActor
+final class SubtleNotchOverlayManager {
+    static let shared = SubtleNotchOverlayManager()
+
+    private var overlayPanels: [NSPanel] = []
+    private var borderViews: [SubtleNotchView] = []
+    private var animationTimer: Timer?
+    private var animationProgress: CGFloat = 1.0 // 0.0 -> 1.0
+    private var currentActiveColor: NSColor? = nil
+    private var isAnimating = false
+    private var isDisappearing = false
+
+    private init() {}
+
+    func transition(to color: NSColor?) {
+        guard let targetColor = color else {
+            // Turning off: animate light beams retracting/vanishing
+            if currentActiveColor != nil {
+                startAnimation(to: currentActiveColor ?? .white, isHiding: true)
+            } else {
+                hide()
+            }
+            return
+        }
+
+        // Turning on or changing color
+        let colorChanged = (currentActiveColor?.cgColor != targetColor.cgColor)
+        if overlayPanels.isEmpty || colorChanged {
+            startAnimation(to: targetColor, isHiding: false)
+        } else {
+            // Steady state update (e.g. breathing opacity update)
+            currentActiveColor = targetColor
+            for view in borderViews {
+                view.strokeColor = targetColor
+                view.needsDisplay = true
+            }
+        }
+    }
+
+    private func startAnimation(to color: NSColor, isHiding: Bool) {
+        currentActiveColor = color
+        isDisappearing = isHiding
+        setupPanelsIfNeeded()
+
+        animationTimer?.invalidate()
+        animationProgress = isHiding ? 1.0 : 0.0
+        isAnimating = true
+
+        let stepDuration = 0.016 // ~60fps
+        let totalSteps: CGFloat = 28.0 // ~0.45s animation duration
+        let delta = 1.0 / totalSteps
+
+        animationTimer = Timer.scheduledTimer(withTimeInterval: stepDuration, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if self.isDisappearing {
+                    self.animationProgress -= delta
+                    if self.animationProgress <= 0.0 {
+                        self.animationProgress = 0.0
+                        self.animationTimer?.invalidate()
+                        self.animationTimer = nil
+                        self.isAnimating = false
+                        self.currentActiveColor = nil
+                        self.hide()
+                        return
+                    }
+                } else {
+                    self.animationProgress += delta
+                    if self.animationProgress >= 1.0 {
+                        self.animationProgress = 1.0
+                        self.animationTimer?.invalidate()
+                        self.animationTimer = nil
+                        self.isAnimating = false
+                    }
+                }
+
+                for view in self.borderViews {
+                    view.strokeColor = self.currentActiveColor ?? color
+                    view.progress = self.animationProgress
+                    view.isMeeting = (self.animationProgress >= 0.88 && !self.isDisappearing)
+                    view.needsDisplay = true
+                }
+            }
+        }
+    }
+
+    private func setupPanelsIfNeeded() {
+        let screens = NSScreen.screens
+        var notchTargets: [(NSScreen, NSRect)] = []
+
+        for screen in screens {
+            if screen.safeAreaInsets.top > 0,
+               let leftArea = screen.auxiliaryTopLeftArea,
+               let rightArea = screen.auxiliaryTopRightArea {
+                let notchWidth = screen.frame.width - leftArea.width - rightArea.width
+                let notchHeight = screen.safeAreaInsets.top
+                let originX = screen.frame.origin.x + leftArea.width
+                let originY = screen.frame.origin.y + screen.frame.height - notchHeight
+                if notchWidth > 0 && notchHeight > 0 {
+                    notchTargets.append((screen, NSRect(x: originX, y: originY, width: notchWidth, height: notchHeight)))
+                }
+            }
+        }
+
+        guard !notchTargets.isEmpty else { return }
+
+        if overlayPanels.count != notchTargets.count {
+            hide()
+            for _ in notchTargets {
+                let panel = NSPanel(
+                    contentRect: .zero,
+                    styleMask: [.borderless, .nonactivatingPanel],
+                    backing: .buffered,
+                    defer: false
+                )
+                panel.level = .popUpMenu
+                panel.isOpaque = false
+                panel.backgroundColor = .clear
+                panel.hasShadow = false
+                panel.ignoresMouseEvents = true
+                panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+                overlayPanels.append(panel)
+            }
+        }
+
+        borderViews.removeAll()
+        for (index, item) in notchTargets.enumerated() {
+            let (_, notchRect) = item
+            let panel = overlayPanels[index]
+            let padding: CGFloat = 6.0
+            let windowRect = NSRect(
+                x: notchRect.minX - padding,
+                y: notchRect.minY - padding,
+                width: notchRect.width + (padding * 2),
+                height: notchRect.height + padding
+            )
+            panel.setFrame(windowRect, display: true)
+
+            let borderView = SubtleNotchView(
+                notchWidth: notchRect.width,
+                notchHeight: notchRect.height,
+                padding: padding,
+                strokeColor: currentActiveColor ?? .white
+            )
+            borderView.progress = animationProgress
+            borderViews.append(borderView)
+            panel.contentView = borderView
+
+            if !panel.isVisible {
+                panel.orderFrontRegardless()
+            }
+        }
+    }
+
+    func hide() {
+        animationTimer?.invalidate()
+        animationTimer = nil
+        for panel in overlayPanels {
+            panel.orderOut(nil)
+        }
+        overlayPanels.removeAll()
+        borderViews.removeAll()
+        currentActiveColor = nil
+    }
+}
+
+private final class SubtleNotchView: NSView {
+    var notchWidth: CGFloat
+    var notchHeight: CGFloat
+    var padding: CGFloat
+    var strokeColor: NSColor
+    var progress: CGFloat = 1.0
+    var isMeeting: Bool = false
+
+    override var isFlipped: Bool { true }
+
+    init(notchWidth: CGFloat, notchHeight: CGFloat, padding: CGFloat, strokeColor: NSColor) {
+        self.notchWidth = notchWidth
+        self.notchHeight = notchHeight
+        self.padding = padding
+        self.strokeColor = strokeColor
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        guard let ctx = NSGraphicsContext.current?.cgContext, progress > 0.01 else { return }
+
+        let leftX = padding
+        let rightX = padding + notchWidth
+        let bottomY = notchHeight
+        let cornerRadius: CGFloat = 10.0
+        let earRadius: CGFloat = 6.0
+        let centerX = padding + (notchWidth / 2.0)
+
+        // Symmetrical paths: Left side travels from top-left to bottom-center
+        // Right side travels from top-right to bottom-center
+        let leftPath = CGMutablePath()
+        leftPath.move(to: CGPoint(x: leftX - earRadius, y: 0))
+        leftPath.addQuadCurve(to: CGPoint(x: leftX, y: earRadius), control: CGPoint(x: leftX, y: 0))
+        leftPath.addLine(to: CGPoint(x: leftX, y: bottomY - cornerRadius))
+        leftPath.addQuadCurve(to: CGPoint(x: leftX + cornerRadius, y: bottomY), control: CGPoint(x: leftX, y: bottomY))
+        leftPath.addLine(to: CGPoint(x: centerX, y: bottomY))
+
+        let rightPath = CGMutablePath()
+        rightPath.move(to: CGPoint(x: rightX + earRadius, y: 0))
+        rightPath.addQuadCurve(to: CGPoint(x: rightX, y: earRadius), control: CGPoint(x: rightX, y: 0))
+        rightPath.addLine(to: CGPoint(x: rightX, y: bottomY - cornerRadius))
+        rightPath.addQuadCurve(to: CGPoint(x: rightX - cornerRadius, y: bottomY), control: CGPoint(x: rightX, y: bottomY))
+        rightPath.addLine(to: CGPoint(x: centerX, y: bottomY))
+
+        // Total approximate length of one half perimeter:
+        // ear (~10) + vertical side (~28) + corner (~15) + bottom half (~90) = ~145
+        let halfLength: CGFloat = 145.0
+        let currentDrawnLength = halfLength * min(1.0, max(0.0, progress))
+        let remainingLength = max(0.0, halfLength - currentDrawnLength)
+
+        // Use dash phase so the line grows smoothly from the top downwards
+        let dashes: [CGFloat] = [currentDrawnLength, remainingLength + 50.0]
+
+        let lineWidth: CGFloat = isMeeting ? 2.2 : 1.5
+        let glowBlur: CGFloat = isMeeting ? 7.0 : 4.0
+
+        for path in [leftPath, rightPath] {
+            // 1. Soft glowing outer light beam
+            ctx.saveGState()
+            ctx.setShadow(offset: .zero, blur: glowBlur, color: strokeColor.withAlphaComponent(isMeeting ? 0.90 : 0.45).cgColor)
+            ctx.addPath(path)
+            ctx.setLineDash(phase: 0.0, lengths: dashes)
+            ctx.setLineWidth(lineWidth)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            ctx.setStrokeColor(strokeColor.withAlphaComponent(0.65).cgColor)
+            ctx.strokePath()
+            ctx.restoreGState()
+
+            // 2. Crisp core hairline
+            ctx.saveGState()
+            ctx.addPath(path)
+            ctx.setLineDash(phase: 0.0, lengths: dashes)
+            ctx.setLineWidth(lineWidth)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            ctx.setStrokeColor(strokeColor.withAlphaComponent(0.95).cgColor)
+            ctx.strokePath()
+            ctx.restoreGState()
+        }
+
+        // 3. Convergence spark/burst effect at the bottom center when the two light beams meet
+        if isMeeting {
+            let sparkRadius: CGFloat = 3.5
+            let sparkCenter = CGPoint(x: centerX, y: bottomY)
+            ctx.saveGState()
+            ctx.setShadow(offset: .zero, blur: 8.0, color: strokeColor.cgColor)
+            ctx.setFillColor(strokeColor.withAlphaComponent(0.95).cgColor)
+            ctx.fillEllipse(in: CGRect(x: sparkCenter.x - sparkRadius,
+                                       y: sparkCenter.y - sparkRadius,
+                                       width: sparkRadius * 2,
+                                       height: sparkRadius * 2))
+            ctx.restoreGState()
+        }
+    }
+}
+
+// MARK: - Menu Bar Icon Non-Template Renderer & View
+
+enum MenuBarIconRenderer {
+    static func renderImage(connected: Bool, isPaused: Bool, percent: Int?, color: NSColor) -> NSImage {
+        let symbolName = connected ? "gamecontroller.fill" : "gamecontroller"
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        let symSize = symbol?.size ?? NSSize(width: 18, height: 13)
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .medium),
+            .foregroundColor: color
+        ]
+        let text = percent.map { "\($0)%" }
+        let textSize = text.map { ($0 as NSString).size(withAttributes: attrs) } ?? .zero
+        let gap: CGFloat = text == nil ? 0 : 4
+        let height: CGFloat = 18
+        let totalWidth = ceil(symSize.width + gap + textSize.width)
+
+        let image = NSImage(size: NSSize(width: totalWidth, height: height), flipped: false) { _ in
+            if let symbol {
+                let tinted = NSImage(size: symSize, flipped: false) { r in
+                    symbol.draw(in: r)
+                    color.set()
+                    r.fill(using: .sourceIn)
+                    return true
+                }
+                tinted.draw(in: NSRect(x: 0, y: (height - symSize.height) / 2,
+                                       width: symSize.width, height: symSize.height))
+            }
+            if let text {
+                let y = (height - textSize.height) / 2
+                (text as NSString).draw(at: NSPoint(x: symSize.width + gap, y: y), withAttributes: attrs)
+            }
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
+}
 
 struct MenuBarIconView: View {
     @ObservedObject var model: ControllerModel
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: model.isConnected ? "gamecontroller.fill" : "gamecontroller")
-                .foregroundColor(iconColor)
-                .opacity(model.isCharging ? model.breathingOpacity : 1.0)
-            
-            if let battery = model.batteryPercentage {
-                Text("\(battery)%")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-            }
-        }
-    }
-
-    private var iconColor: Color {
-        if model.isPaused {
-            return .red
-        } else if model.isConnected {
-            return .green
-        } else {
-            return .primary
-        }
+        let color = model.currentColor
+        Image(nsImage: MenuBarIconRenderer.renderImage(
+            connected: model.isConnected,
+            isPaused: model.isPaused,
+            percent: model.isConnected ? model.batteryPercentage : nil,
+            color: color
+        ))
     }
 }
 
@@ -88,6 +385,17 @@ struct MenuView: View {
                     Text("Link: Paused — Resume link")
                 } else {
                     Text("Link: Active — Pause link")
+                }
+            }
+
+            // Notch Light on/off toggle button
+            Button {
+                model.toggleNotchLight()
+            } label: {
+                if model.isNotchLightEnabled {
+                    Text("Luz del Notch: Encendida (Apagar)")
+                } else {
+                    Text("Luz del Notch: Apagada (Encender)")
                 }
             }
 
@@ -130,11 +438,23 @@ final class ControllerModel: ObservableObject {
     // Published UI properties
     @Published var isConnected: Bool = false
     @Published var isPaused: Bool = false
+    @Published var isNotchLightEnabled: Bool = true
     @Published var batteryPercentage: Int? = nil
     @Published var isCharging: Bool = false
     @Published var breathingOpacity: Double = 1.0
     @Published var controllerName: String = ""
     @Published var isRemotePlayRunning: Bool = false
+
+    var currentColor: NSColor {
+        if isPaused {
+            return .systemRed
+        } else if isConnected {
+            let alpha = (isCharging && !isPaused) ? breathingOpacity : 1.0
+            return NSColor.systemGreen.withAlphaComponent(alpha)
+        } else {
+            return .white
+        }
+    }
 
     // Known Remote Play bundle IDs
     private let remotePlayBundleIDs = [
@@ -186,10 +506,16 @@ final class ControllerModel: ObservableObject {
         monitorTimer?.invalidate()
         monitorTimer = nil
         stopBreathingEffect()
+        SubtleNotchOverlayManager.shared.hide()
         NotificationCenter.default.removeObserver(self)
     }
 
     // MARK: - Actions
+
+    func toggleNotchLight() {
+        isNotchLightEnabled.toggle()
+        updateNotchOverlay()
+    }
 
     func togglePause() {
         if isPaused {
@@ -203,6 +529,7 @@ final class ControllerModel: ObservableObject {
             // Close PS Remote Play when link is paused to release controller for Steam/native games
             closePSRemotePlay()
             isRemotePlayRunning = false
+            updateNotchOverlay()
         }
     }
 
@@ -226,7 +553,7 @@ final class ControllerModel: ObservableObject {
         updateRemotePlayRunningStatus()
 
         guard !isPaused else {
-            // When paused, do not supervise or open Remote Play
+            updateNotchOverlay()
             return
         }
 
@@ -245,7 +572,6 @@ final class ControllerModel: ObservableObject {
         } else {
             // Disconnected
             if previouslyConnected {
-                // Controller was disconnected
                 isConnected = false
                 batteryPercentage = nil
                 isCharging = false
@@ -260,6 +586,16 @@ final class ControllerModel: ObservableObject {
                 controllerName = ""
                 stopBreathingEffect()
             }
+        }
+
+        updateNotchOverlay()
+    }
+
+    private func updateNotchOverlay() {
+        if isNotchLightEnabled && (isConnected || isPaused) {
+            SubtleNotchOverlayManager.shared.transition(to: currentColor)
+        } else {
+            SubtleNotchOverlayManager.shared.transition(to: nil)
         }
     }
 
@@ -303,13 +639,12 @@ final class ControllerModel: ObservableObject {
     // MARK: - Battery & Charging Logic
 
     private func updateBattery(from gcController: GCController?) {
-        // Look through connected GCControllers for matching battery info
         let targetController = gcController ?? GCController.controllers().first(where: {
             isDualSenseName($0.vendorName ?? "")
         })
 
         if let battery = targetController?.battery {
-            let level = battery.batteryLevel // Float: 0.0 ... 1.0 (or -1.0 if unknown)
+            let level = battery.batteryLevel
             if level >= 0.0 {
                 let percent = Int((level * 100.0).rounded())
                 self.batteryPercentage = max(0, min(100, percent))
@@ -343,7 +678,6 @@ final class ControllerModel: ObservableObject {
         breathingOpacity = 1.0
         breathingGoingDown = true
 
-        // Moderate non-blocking timer: updates every 0.1s to smoothly transition opacity between 0.4 and 1.0
         breathingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self, self.isCharging else { return }
@@ -361,6 +695,7 @@ final class ControllerModel: ObservableObject {
                         self.breathingGoingDown = true
                     }
                 }
+                self.updateNotchOverlay()
             }
         }
     }
@@ -369,6 +704,7 @@ final class ControllerModel: ObservableObject {
         breathingTimer?.invalidate()
         breathingTimer = nil
         breathingOpacity = 1.0
+        updateNotchOverlay()
     }
 
     // MARK: - Low Battery Notification
@@ -380,7 +716,6 @@ final class ControllerModel: ObservableObject {
                 didNotifyLowBattery = true
             }
         } else {
-            // Battery climbed back above 20%, allow notifying again if it drops
             didNotifyLowBattery = false
         }
     }
@@ -395,7 +730,7 @@ final class ControllerModel: ObservableObject {
         let request = UNNotificationRequest(
             identifier: "com.dualsense.remoteplay.lowbattery",
             content: content,
-            trigger: nil // deliver immediately
+            trigger: nil
         )
 
         center.add(request) { error in
@@ -421,7 +756,6 @@ final class ControllerModel: ObservableObject {
     private func openPSRemotePlayIfNeeded() {
         guard !isLaunchingRemotePlay else { return }
 
-        // First check if an instance is already running
         for bundleID in remotePlayBundleIDs {
             let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
             if !running.isEmpty {
@@ -430,7 +764,6 @@ final class ControllerModel: ObservableObject {
             }
         }
 
-        // Find PS Remote Play URL on system
         var appURL: URL?
         for bundleID in remotePlayBundleIDs {
             if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
@@ -439,11 +772,11 @@ final class ControllerModel: ObservableObject {
             }
         }
 
-        // If not found by bundle ID, search default Applications directory
         if appURL == nil {
             let candidatePaths = [
                 "/Applications/PS Remote Play.app",
                 "/Applications/Remote Play.app",
+                "/Applications/RemotePlay.app",
                 NSHomeDirectory() + "/Applications/PS Remote Play.app"
             ]
             for path in candidatePaths {
@@ -455,7 +788,6 @@ final class ControllerModel: ObservableObject {
         }
 
         guard let targetURL = appURL else {
-            // Not installed on system, keep app running safely
             NSLog("[DualSenseRemotePlay] PS Remote Play is not installed or could not be found.")
             return
         }
@@ -484,7 +816,6 @@ final class ControllerModel: ObservableObject {
             }
         }
 
-        // Also check by localized name if bundle ID match didn't catch a custom instance
         let allApps = NSWorkspace.shared.runningApplications
         for app in allApps {
             if let name = app.localizedName, (name == "PS Remote Play" || name == "RemotePlay") {

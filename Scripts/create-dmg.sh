@@ -10,11 +10,11 @@ echo "==> Running build-app.sh first..."
 bash "${SCRIPT_DIR}/build-app.sh"
 
 BUILD_DIR="${PROJECT_DIR}/build"
-APP_NAME="Gemini DualSense Remote Play.app"
+APP_NAME="DualSense Remote Play.app"
 APP_PATH="${BUILD_DIR}/${APP_NAME}"
-DMG_NAME="Gemini-DualSense-Remote-Play.dmg"
+DMG_NAME="DualSense-Remote-Play.dmg"
 DMG_PATH="${BUILD_DIR}/${DMG_NAME}"
-VOLUME_NAME="Gemini DualSense Remote Play"
+VOLUME_NAME="DualSense Remote Play"
 STAGING_DIR="${BUILD_DIR}/dmg_staging"
 
 if [ ! -d "${APP_PATH}" ]; then
